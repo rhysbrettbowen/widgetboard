@@ -1,3 +1,24 @@
 #WidgetBoard
 
 Logic for creating a board of widgets on the screen.
+
+##Board.js 
+
+contains the logic for handling the board.
+
+###requirements
+- underscore
+
+##widgetboard.js
+
+is an example of how to use board.js
+
+###requirements
+
+- underscore
+- backbone
+- https://github.com/rhysbrettbowen/Backbone.ComponentView : for backbone view managment
+- https://github.com/rhysbrettbowen/Backbone.Advice : to handle mixins to make the board movable
+- https://github.com/rhysbrettbowen/Backbone.AdviceFactory : to handle inheritance
+- https://github.com/rhysbrettbowen/MouseMover : so movement only happens on animationFrame rather than mousemove
+
