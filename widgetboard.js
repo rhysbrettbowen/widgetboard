@@ -36,7 +36,7 @@ define([
 			setPos: function(position) {
 				if (!this.el)
 					return;
-	        	if (_.equals(this.positionSave, position))
+	        	if (_.isEqual(this.positionSave, position))
 	        		return;
 	        	this.positionSave = position;
 	            this.$el.css(position);
@@ -224,7 +224,7 @@ define([
 					vertical[1],
 					horizontal[0]
 				];
-				if (_.equals(this.lastBlock, temp))
+				if (_.isEqual(this.lastBlock, temp))
 					return;
 				this.lastBlock = temp;
 				process.apply(this, this.lastBlock);
@@ -398,7 +398,7 @@ define([
 		base: 'Widget',
 		className: 'widget-placeholder',
 		setPosition: function(position) {
-        	if (_.equals(this.positionSave, position))
+        	if (_.isEqual(this.positionSave, position))
         		return;
         	this.positionSave = position;
             this.$el.css(position);
@@ -478,7 +478,7 @@ define([
 			template: WidgetContainerTemplate,
 			contentElement: '.widget-inner',
 	        setPosition: function(position) {
-	        	if (_.equals(this.positionSave, position))
+	        	if (_.isEqual(this.positionSave || {}, position))
 	        		return;
 	        	this.positionSave = position;
 	            this.$el.css(position);
@@ -505,9 +505,9 @@ define([
 	Factory.register('WidgetBoard', {
 		base: Backbone.ComponentView,
 		extend: {
-			WIDTH: 4,
-			HEIGHT: 10,
-			SCREENCOLS: 4,
+			WIDTH: 9,
+			HEIGHT: 9,
+			SCREENCOLS: 9,
 			MAXCOLS: Infinity,
 			className: 'widgetboard',
 			template: '',
@@ -571,14 +571,14 @@ define([
 					this.styleEl.innerHTML = '.widgetboard{width:100%}';
 					return;
 				}
-				this.styleEl.innerHTML = '@media(max-width:500px){' +
-					'.widgetboard{width:' + (this.WIDTH * 100) + '%;}}\n' +
-					'@media(min-width:500px){' +
-					'.widgetboard{width:' + (this.WIDTH * 50) + '%;}}\n' +
-					'@media(min-width:750px){' +
-					'.widgetboard{width:' + (this.WIDTH / 3 * 100) + '%;}}\n' +
-					'@media(min-width:1000px){' +
-					'.widgetboard{width:' + (this.WIDTH * 25) + '%;}}' ;
+				// this.styleEl.innerHTML = '@media(max-width:500px){' +
+				// 	'.widgetboard{width:' + (this.WIDTH * 100) + '%;}}\n' +
+				// 	'@media(min-width:500px){' +
+				// 	'.widgetboard{width:' + (this.WIDTH * 50) + '%;}}\n' +
+				// 	'@media(min-width:750px){' +
+				// 	'.widgetboard{width:' + (this.WIDTH / 3 * 100) + '%;}}\n' +
+				// 	'@media(min-width:1000px){' +
+				// 	'.widgetboard{width:' + (this.WIDTH * 25) + '%;}}' ;
 			},
 			/**
 			 * tells each widget where is should be placed on the screen
@@ -589,7 +589,7 @@ define([
 				var row = 100 / this.HEIGHT;
 				var column = 100 / this.WIDTH;
 				_.each(this.board.getBlocks(), function(block) {
-					block.value.render();
+					// block.value.render();
 	                block.value.setPosition({
 	                    top: (block.y * row) + '%',
 	                    left: (block.x * column) + '%',
@@ -721,7 +721,7 @@ define([
 	Factory.register('MovableBoard', {
 		base: 'WidgetBoard',
 		extend: {
-			widget: Factory.get('MovableWidget').extend().mixin(WidgetBoard.Widget.mixin.fancyMove)
+			widget: Factory.get('MovableWidget')
 		},
 		mixins: [
 			WidgetBoard.WidgetBoard.mixin.asdf

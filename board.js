@@ -18,7 +18,7 @@ define([
 	 * @param  {number} rows
 	 */
 	var Board = function(columns, rows) {
-		this.columns = columns;
+		this.cols = columns;
 		this.rows = rows;
 		this._generate();
 	};
@@ -127,8 +127,6 @@ define([
 		block.eachSpace(function(x, y) {
 			this.setBlockAt(x, y);
 		}, this);
-		block.x = -1;
-		block.y = -1;
 	};
 
 	/**
@@ -140,7 +138,7 @@ define([
 	 */
 	Board.prototype.canFit = function(block, x, y) {
 		block = block.clone();
-		block.setPos(x, y);
+		block.setPosition(x, y);
 		return x + block.width <= this.cols &&
 			y + block.height <= this.rows &&
 			_.all(this.getBlocks(), function(child) {
@@ -159,7 +157,7 @@ define([
 		var space = block.clone();
 		space.value = -1;
 		this.removeBlock(block);
-		block.setPos(x, y);
+		block.setPosition(x, y);
 		var blocks = this.addBlock(block);
 		this.placeBlocksInBlock(space, blocks);
 	};
@@ -180,7 +178,20 @@ define([
 		block.width = width;
 		block.height = height;
 		return this.addBlock(block);
-	}
+	};
+
+    Board.prototype.canReplaceBlock = function(block, x, y, width, height) {
+    	this.removeBlock(block);
+    	var b2 = block.clone();
+    	var board = this.clone();
+        var ret = board.placeBlock(b2, width, height, x, y);
+        this.addBlock(block);
+        return !ret.length;
+    };
+
+    Board.prototype.replaceBlock = function(block, x, y, width, height) {
+    	return this.placeBlock(block, width, height, x, y);
+    };
 
 	/**
 	 * recursive function to try and place a set of blocks inside a board area
@@ -198,7 +209,7 @@ define([
 		for (var y = block.y; y < block.y + block.height; y++) {
 			for (var x = block.x; x < block.x + block.width; x++) {
 				if (this.canFit(blocks[level], x, y)) {
-					blocks[level].setPos(x, y);
+					blocks[level].setPosition(x, y);
 					this.addBlock(blocks[level]);
 					if (this.placeBlocksInBlock(block, blocks, level + 1))
 						return true;
@@ -223,7 +234,7 @@ define([
 		if (y == null)
 			y = block.y;
 		this.removeBlock(block);
-		block.setPos(x, y);
+		block.setPosition(x, y);
 		block.width = width;
 		block.height = height;
 		return this.addBlock(block);

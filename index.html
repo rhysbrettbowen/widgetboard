@@ -1,0 +1,2300 @@
+<body>
+<script src="http://cdnjs.cloudflare.com/ajax/libs/handlebars.js/1.0.0/handlebars.js"></script>
+<script src="http://code.jquery.com/jquery-2.0.3.min.js"></script>
+<script src="http://jashkenas.github.io/underscore/underscore-min.js"></script>
+<script src="http://jashkenas.github.io/backbone/backbone-min.js"></script>
+<style>
+.widgetboard{
+	width:100%;
+	height:100%;
+}
+.widget{
+	border:1px solid #333;
+	position:absolute;
+	transition:0.5s;
+	overflow:hidden;
+}
+.widget.moving{
+    transition:0;
+    z-index: 999;
+}
+.widget-placeholder {
+	background: #CCC;
+	position:absolute;
+	transition:0.5s;
+	z-index:-1;
+}
+.resize{
+	width:10px;
+	height:10px;
+	background:#333;
+	position:absolute;
+	cursor:pointer;
+}
+.resize-bottom-right {
+	right:2px;
+	bottom:2px;
+	cursor: se-resize;
+}
+.resize-bottom-left {
+	left:2px;
+	bottom:2px;
+	cursor: sw-resize;
+}
+.resize-top-right {
+	right:2px;
+	top:2px;
+	cursor: ne-resize;
+}
+.resize-top-left {
+	left:2px;
+	top:2px;
+	cursor: nw-resize;
+}
+.move {
+	background: #EEE;
+	cursor: pointer;
+}
+.red {
+	background: red;
+}
+.green {
+	background: green;
+}
+.yellow {
+	background: yellow;
+}
+.orange {
+	background: orange;
+}
+.blue {
+	background: blue;
+}
+.purple {
+	background: purple;
+}
+.pink {
+	background: pink;
+}
+.content, .content div {
+	height:100%;
+	width:100%;
+}
+</style>
+<div class="body"></div>
+<script>
+// v1.0.0
+
+// ==========================================
+// Copyright 2013 Dataminr
+// Licensed under The MIT License
+// http://opensource.org/licenses/MIT
+// work derived from https://github.com/twitter/flight/blob/master/lib/advice.js
+// ==========================================
+
+
+var MouseMover = (function() {
+
+	window.requestAnimationFrame = (function(){
+	  return  window.requestAnimationFrame ||
+          window.webkitRequestAnimationFrame ||
+          window.mozRequestAnimationFrame ||
+          window.requestAnimFrame ||
+          function(callback){
+            window.setTimeout(callback, 1000 / 60);
+          };
+	})();
+
+	var id = 0;
+
+	var getUnique = function() {
+		return 'MM' + id++;
+	};
+
+	var MouseMover = function(fn) {
+		this.fn = fn;
+		this.mouseCoords = {};
+		this.id = getUnique();
+		this.stopped = true;
+		this.moved = false;
+	};
+
+	MouseMover.prototype.start = function() {
+		var that = this;
+		$(document.body).on('mousemove.' + this.id, function(e) {
+			that.moved = true;
+			that.mouseCoords = {
+				clientX: e.clientX,
+				clientY: e.clientY,
+				oldClientX: that.mouseCoords.clientX,
+				oldClientY: that.mouseCoords.clientY
+			};
+		});
+		this.stopped = false;
+		this.next();
+	};
+
+	MouseMover.prototype.stop = function() {
+		$(document.body).off('mousemove.' + this.id);
+		this.stopped = true;
+	};
+
+	MouseMover.prototype.next = function() {
+		var that = this;
+		window.requestAnimationFrame(function() {
+			if (that.stopped)
+				return;
+			if (that.moved)
+				that.fn(that.mouseCoords);
+			that.moved = false;
+			that.next();
+		});
+	};
+
+	return MouseMover;
+})();
+// v1.0.0
+
+// ==========================================
+// Copyright 2013 Dataminr
+// Licensed under The MIT License
+// http://opensource.org/licenses/MIT
+// work derived from https://github.com/twitter/flight/blob/master/lib/advice.js
+// ==========================================
+
+
+// ==========================================
+// Copyright 2013 Twitter, Inc
+// Licensed under The MIT License
+// http://opensource.org/licenses/MIT
+// ==========================================
+
+(function () {
+
+  Backbone.Advice = {
+
+    // calls the wrapped function with base functions as first argument
+    around: function(base, wrapped) {
+      return function() {
+        var args = [].slice.call(arguments, 0);
+        return wrapped.apply(this, [_.bind(base, this)].concat(args));
+      };
+    },
+
+    // will call the new function before the old one with same arguments
+    before: function(base, before) {
+      return this.around(base, function() {
+        var args = [].slice.call(arguments, 0),
+            orig = args.shift(),
+            beforeFn;
+
+        beforeFn = (typeof before == 'function') ? before : before.obj[before.fnName];
+        beforeFn.apply(this, args);
+        return (orig).apply(this, args);
+      });
+    },
+
+    // will call the new function after the old one with same arguments
+    after: function(base, after) {
+      return this.around(base, function() {
+        var args = [].slice.call(arguments, 0),
+            orig = args.shift(),
+            afterFn;
+
+        // this is a separate statement for debugging purposes.
+        var res = (orig.unbound || orig).apply(this, args);
+
+        afterFn = (typeof after == 'function') ? after : after.obj[after.fnName];
+        afterFn.apply(this, args);
+        return res;
+      });
+    },
+
+    /**
+     * if it exists then overwrite
+     */
+    clobber: function(key, value) {
+      var base = this;
+      if (typeof base == 'function')
+        base = this.prototype;
+      if (_.isString(key)) {
+        var temp = key;
+        key = {};
+        key[temp] = value;
+      }
+      _.extend(base, key);
+      return this;
+    },
+
+    /**
+     * will add values to an existing object (good for 'events')
+     */
+    addToObj: function(obj) {
+      var base = this;
+      if (typeof base == 'function')
+        base = this.prototype;
+      _.each(obj, function(val, key) {
+        base[key] = _.extend(_.clone(Backbone.Advice.findVal(base, key)) || {}, val);
+      });
+      return this;
+    },
+
+    /**
+     * will set only if doesn't exist
+     */
+    setDefaults: function(obj) {
+      var base = this;
+      if (typeof base == 'function')
+        base = this.prototype;
+      _.each(obj, function(val, key) {
+        if (!Backbone.Advice.findVal(base, key))
+          base[key] = val;
+      });
+      return this;
+    },
+
+    /**
+     * find a value in a prototype chain
+     */
+    findVal: function(obj, name) {
+      while (!obj[name] && obj.prototype)
+        obj = obj.prototype;
+      return obj[name];
+    },
+
+    /**
+     * adds mixins to an object
+     */
+    mixin: function(mixins, options) {
+
+      // used to saved applied mixins
+      this.mixedIn = _.clone(this.mixedIn) || [];
+      if (!this.__super__ ||
+          this.mixedOptions == this.__super__.constructor.mixedOptions)
+        this.mixedOptions = _.clone(this.mixedOptions) || {};
+      _.extend(this.mixedOptions, options);
+
+      // if only one passed in make it an array
+      if (!_.isArray(mixins))
+        mixins = [mixins];
+
+      // if an array then run each mixin and save to mixedIn array
+      mixins = _(mixins).map(function(mixin) {
+        if (!_.isFunction(mixin))
+          return mixin;
+        if (!_.contains(this.mixedIn, mixin)) {
+          this.mixedIn.push(mixin);
+          if(mixin)
+            return mixin.call(this, this.mixedOptions);
+        }
+      }, this);
+
+      // if we have an object (can be returned by functions) - use them
+      _(mixins).each(function(mixin) {
+
+        if (!mixin) return;
+
+        mixin = _.clone(mixin);
+
+        // call the reserved keywords
+        _([
+          'mixin',
+          'around',
+          'after',
+          'before',
+          'clobber',
+          'addToObj',
+          'setDefaults'
+        ]).each(function(key) {
+          if (mixin[key]) {
+            if (key == 'mixin')
+              this[key](mixin[key], this.mixedOptions);
+            else
+              this[key](mixin[key]);
+            delete mixin[key];
+          }
+        }, this);
+
+        // on the remaining keywords, guess how to add them in
+        _.each(_.keys(mixin), function(key) {
+
+          // if it's a function then put it after
+          if (_.isFunction(mixin[key])) {
+            this.after(key, mixin[key]);
+
+          // if it's an object then add it to any existing one
+          } else if (_.isObject(mixin[key]) && !_.isArray(mixin[key])) {
+            var obj = {};
+            obj[key] = mixin[key];
+            this.addToObj(obj);
+
+          //else change the value
+          } else {
+            this.clobber(key, mixin[key]);
+          }
+        }, this);
+      }, this);
+
+      // chaining
+      return this;
+    },
+
+    hasMixin: function(mixin) {
+      var mixins = this.mixedIn || this.constructor.mixedIn;
+      return _.contains(mixins, mixin);
+    },
+
+    /**
+     * adds mixin functions to an object
+     */
+    addMixin: function(obj) {
+      // adds before, after and around
+      _.each(['before', 'after', 'around'], function(m) {
+        obj[m] = function(method, fn) {
+
+          // if an object is passed in then split that in to individual calls
+          if (typeof method == 'object') {
+            _.each(_.keys(method), function(key) {
+              this[m](key, method[key]);
+            }, this);
+            return this;
+          }
+
+          // functions should go on a prototype if a constructor passed in
+          var base = this;
+          if (typeof base == 'function')
+            base = this.prototype;
+
+          // find original function in the prototype chain
+          var orig = Backbone.Advice.findVal(base, method);
+
+          // use an identity function if none found
+          if (typeof orig != 'function')
+            orig = _.identity;
+          base[method] = Backbone.Advice[m](orig, fn);
+
+          // chaining
+          return this;
+        };
+      });
+
+      // add in other functions
+      obj.mixin = Backbone.Advice.mixin;
+      obj.addToObj = Backbone.Advice.addToObj;
+      obj.setDefaults = Backbone.Advice.setDefaults;
+      obj.findVal = Backbone.Advice.findVal;
+      obj.clobber = Backbone.Advice.clobber;
+      obj.prototype.hasMixin = obj.hasMixin = Backbone.Advice.hasMixin;
+
+    }
+  };
+
+  Backbone.Advice.addMixin(Backbone.View);
+  Backbone.Advice.addMixin(Backbone.Model);
+  Backbone.Advice.addMixin(Backbone.Collection);
+
+  return Backbone.Advice;
+
+})();
+// v0.4.0
+
+// ==========================================
+// Copyright 2013 Dataminr
+// Licensed under The MIT License
+// http://opensource.org/licenses/MIT
+// ==========================================
+
+var Factory = (function() {
+
+	var cache = {};
+
+	var adviceKeywords = [
+		'after',
+		'before',
+		'around',
+		'clobber',
+		'addToObj',
+		'setDefaults',
+		'mixin'
+	];
+
+	var reserved = adviceKeywords.concat([
+		'mixins',
+		'extend',
+		'base',
+		'super',
+		'options'
+	]);
+
+	var extendKeys = [
+		'itemView',
+		'content',
+		'header',
+		'endorsed',
+		'parse',
+		'model',
+		'template',
+		'widget'
+	];
+
+	/**
+	 * @constructor
+	 * @param {string|function(new:Object)} base
+	 * @param {Object=} ext
+	 * @param {Object=} mixins
+	 * @param {Object=} options
+	 */
+	var BaseNode = function BaseNode(base, ext, mixins, options) {
+		this.base = _.isString(base) ? cache[base] : base;
+		this.ext = ext || {};
+		this.mixins = mixins || {};
+		this.options = options || {};
+		this.main = null;
+	};
+
+	return {
+		/**
+		 * register a type with the factory
+		 * @param {string} name
+		 * @param {Object} options
+		 * @return {function(new:Object)}
+		 */
+		register: function(name, options) {
+			var opts = {};
+
+			opts.base = _.isString(options.base) ?
+				cache[options.base] :
+				new BaseNode(options.base);
+
+			_.extend(opts, {
+				extend: _.clone(options.extend) || {},
+				mixins: _.clone(_.isArray(options.mixins) ?
+					{mixin: options.mixins,
+						after: {},
+						before: {}
+					} :
+					options.mixins) || {},
+				options: _.clone(options.options) || {}
+			});
+			var base = this.getBase(opts.base);
+			var proto = this.getBase(opts.base).prototype;
+			var ext = this.getExt(opts.base);
+			var all = _.extend({}, ext, proto);
+			for (var key in options) {
+				if (!_.contains(reserved, key)) {
+					if (_.isFunction(options[key]) &&
+								!_.contains(extendKeys, key)) {
+						opts.mixins.after = opts.mixins.after || {}
+						opts.mixins.after[key] = options[key];
+					} else {
+						opts.extend[key] = options[key];
+					}
+				}
+				if (_.contains(adviceKeywords, key)) {
+					opts.mixins[key] = opts.mixins[key] || {};
+					_.extend(opts.mixins[key], options[key]);
+				}
+			}
+			cache[name] = new BaseNode(opts.base, opts.extend, opts.mixins, opts.options);
+			cache[name].main = this.create(name);
+			return cache[name].main;
+		},
+		/**
+		 * @param {string} name
+		 * @return {function(new:Object)}
+		 */
+		get: function(type) {
+			return cache[type].main;
+		},
+		/**
+		 * @param {string} name
+		 * @oaram {...*} var_args
+		 * @return {Object}
+		 */
+		inst: function(type) {
+			if (arguments.length == 1)
+				return new (this.get(type))();
+			if (arguments.length == 2)
+				return new (this.get(type))(arguments[1]);
+			if (arguments.length == 3)
+				return new (this.get(type))(arguments[1], arguments[2]);
+			if (arguments.length == 4)
+				return new (this.get(type))(arguments[1], arguments[2], arguments[3]);
+			if (arguments.length == 5)
+				return new (this.get(type))(arguments[1], arguments[2], arguments[3], arguments[4]);
+		},
+		/**
+		 * EXPERIMENTAL
+		 * mark a function to use super
+		 * @param {Function} fn
+		 */
+		super: function(fn) {
+			fn.super = true;
+		},
+		/**
+		 * EXPERIMENTAL
+		 * return a function that gets passed it's super function
+		 * @param {string} BaseNode [description]
+		 * @param {string} name of function
+		 * @param {Function} fn
+		 * @return {Function}
+		 */
+		getSuper: function(BaseNode, name, fn) {
+			var newBase = BaseNode.base;
+			var earlier = getExt(newBase)[name];
+			while (earlier == fn) {
+				newBase = newBase.base;
+				earlier = getExt(newBase)[name];
+			}
+			earlier = earlier || _.identity;
+			if (earlier.super)
+				earlier = this.getSuper(newBase, name, earlier);
+			return function() {
+				return fn.apply(this, [earlier].concat([].slice.call(arguments, 0)));
+			};
+		},
+		/**
+		 * extends mixin objects
+		 * @param {Object} obj
+		 * @param {Object} mixin
+		 * @return {Object}
+		 */
+		extendMixinObj: function(obj, mixin) {
+			for (var i = 0; i < adviceKeywords.length; i++) {
+				var key = adviceKeywords[i];
+				if (mixin[key]) {
+					if (key != 'mixin') {
+						obj[key] = obj[key] || {};
+						_.extend(obj[key], mixin[key]);
+					} else {
+						obj[key] = _.union(obj[key] || [], mixin[key]);
+					}
+				}
+			}
+			return obj;
+		},
+		/**
+		 * extends objects
+		 */
+		extend: function(obj, ext) {
+			if (arguments.length > 2) {
+				for (var i = arguments.length - 1; i > 1; i--) {
+					Factory.extend(obj, arguments[i]);
+				}
+				return obj;
+			}
+			for (var key in ext) {
+				if (_.isArray(ext[key]) && _.isArray(obj[key]))
+					obj[key].push.apply(obj[key], ext[key]);
+				else if (_.isObject(ext[key]) && _.isObject(obj[key]))
+					_.extend(obj[key], ext[key]);
+				else
+					obj[key] = ext[key];
+			}
+			return obj;
+		},
+		/**
+		 * get mixin object for a BaseNode
+		 * @param {BaseNode} node
+		 * @return {Object}
+		 */
+		getMixins: function(node) {
+			if (!(node instanceof BaseNode)) {
+				return {}
+			}
+			return this.extendMixinObj(this.getMixins(node.base), node.mixins);
+		},
+		/**
+		 * get the options for mixins for a BaseNode
+		 * @param {BaseNode} node
+		 * @return {Object}
+		 */
+		getOptions: function(node) {
+			if (!(node instanceof BaseNode)) {
+				return {}
+			}
+			return _.extend({}, this.getOptions(node.base), node.options);
+		},
+		/**
+		 * get the extends for a BaseNode
+		 * @param {BaseNode} node
+		 * @return {Object}
+		 */
+		getExt: function(node) {
+			if (!(node instanceof BaseNode)) {
+				return {};
+			}
+			return _.extend({}, this.getExt(node.base), node.ext);
+		},
+		/**
+		 * get the base constructor for a BaseNode
+		 * @param {BaseNode} node
+		 * @return {function(new:Object)}
+		 */
+		getBase: function(node) {
+			if (!(node.base instanceof BaseNode)) {
+				return node.base;
+			}
+			return this.getBase(node.base);
+		},
+		/**
+		 * create a constructor using a BaseNode
+		 * @param {string} type
+		 * @param {Object=} options
+		 * @return {function(new:Object)}
+		 */
+		create: function(type, options) {
+			return this.getBase(cache[type])
+				.extend(this.getExt(cache[type]))
+				.mixin(this.getMixins(cache[type]),
+					_.extend({}, this.getOptions(cache[type]), options));
+		}
+
+	};
+
+})();
+// V1.1.1
+
+// ==========================================
+// Copyright 2013 Dataminr
+// Licensed under The MIT License
+// http://opensource.org/licenses/MIT
+// work derived from http://closure-library.googlecode.com/svn/docs/closure_goog_ui_component.js.source.html
+// ==========================================
+
+// Copyright 2007 The Closure Library Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+(function() {
+
+    var orig = Backbone.View.prototype;
+
+    var viewOptions = ['model', 'collection', 'el', 'id', 'attributes', 'className', 'tagName', 'template', 'itemView'];
+
+    Backbone.ComponentView = Backbone.View.extend({
+        constructor: function(options) {
+            this.cid = _.uniqueId('view');
+            this._configure(options || {});
+            this.initialize.apply(this, arguments);
+        },
+        _inDocument: false,
+        _parent: null,
+        _children: null,
+        _childIndex: null,
+        _wasDecorated: false,
+        _disposed: false,
+        _domCreated: false,
+        __manager__: {},
+        _views: null,
+        _options: function(){},
+        _configure: function(options) {
+            if (this.options) options = _.extend({}, this.options, options);
+            for (var i = 0, l = viewOptions.length; i < l; i++) {
+                var attr = viewOptions[i];
+                if (options[attr]) this[attr] = options[attr];
+            }
+            this.options = options;
+
+            if (options.views)
+                this.setViews(options.views);
+        },
+        _setupChildStorage: function() {
+            this._views = this._views || {};
+            this._children = this._children || [];
+            this._childIndex = this._childIndex || {};
+        },
+        super: function(fn) {
+            var caller = Backbone.ComponentView.prototype.super.caller;
+            var found;
+            for (var child = this; child && _.isFunction(child[fn]); child = child.constructor.__super__) {
+                if (!found)
+                    found = true;
+                else if (child[fn] != caller)
+                    return child[fn].apply(this, [].slice.call(arguments, 1));
+            }
+        },
+        getId: function() {
+            return this.cid;
+        },
+        getElement: function() {
+            return this.el;
+        },
+        setParent: function(parent) {
+            if (this._parent && this._parent != parent)
+                this._parent.removeChild(this);
+            this._parent = parent;
+        },
+        getModel: function() {
+            return this.model || this.collection;
+        },
+        setModel: function(model) {
+            if (model instanceof Backbone.Model)
+                this.model = model;
+            if (model instanceof Backbone.Collection)
+                this.collection = model;
+        },
+        getParent: function() {
+            return this._parent;
+        },
+        isInDocument: function() {
+            return this._inDocument;
+        },
+        createDom: function(force) {
+            if ((this._domCreated || this._wasDecorated) && !force)
+                return;
+            this._ensureElement();
+            if (this.template && _.isString(this.template)) {
+                this.template = Handlebars.compile(this.template);
+            }
+            if (this.template && _.isFunction(this.template)) {
+                this.$el.empty();
+                this.$el.append(this.template(this.serialize()));
+            }
+
+            this._domCreated = true;
+
+            if (this.domCreated)
+                this.domCreated();
+
+            this.delegateEvents();
+            this.trigger('domCreated');
+        },
+        isDomCreated: function() {
+            return this._domCreated;
+        },
+        serialize: function() {
+            if (this.getModel())
+                return this.getModel().toJSON();
+            return {};
+        },
+        render: function(el) {
+            if (_.isString(el))
+                el = $(el)[0];
+            this.render_(el || (this.getParent() &&
+                this.getParent().getElForChild(this)), this.getNextSibling());
+            return this;
+        },
+        unrender: function() {
+            if(!this._inDocument || this._wasDecorated)  return console.warn('Trying to unrender decorated view');
+            this._exitDocument();
+            this.$el.remove();
+        },
+        renderInto: function(el) {
+            if (_.isString(el))
+                el = $(el)[0];
+            if (el && !el.tagName)
+                el = null;
+            el = el || (this.getParent() &&
+                this.getParent().getElForChild(this));
+
+            var  frag = document.createDocumentFragment();
+            this.render_(frag);
+            $(el).append(frag);
+        },
+        getElForChild: function(child) {
+            var sel;
+            var sel;
+            _.each(this._views, function(val, key) {
+                if (_.contains(val, child))
+                    sel = key;
+            });
+            if (sel)
+                sel = this.$(sel)[0];
+            return sel || this.getContentElement();
+        },
+        getNextSibling: function() {
+            var parent = this.getParent();
+            if (!parent)
+                return;
+            var children = parent.getChildrenBySelector(parent.getSelectorForChild(this));
+            return children[_.indexOf(children, this) + 1];
+        },
+        renderBefore: function(sibling) {
+            this.render_(sibling.parentNode, sibling);
+        },
+        render_: function(opt_parentElement, opt_beforeNode) {
+
+            this.createDom();
+
+            if (opt_parentElement) {
+                opt_parentElement.insertBefore(this.el, opt_beforeNode || null);
+            } else {
+                document.body.appendChild(this.el);
+            }
+
+            if (!this._parent || this._parent.isInDocument()) {
+                this._enterDocument();
+            }
+        },
+        decorate: function(element) {
+            if (this._inDocument) {
+                throw new Error('already rendered');
+            } else if (element && this.canDecorate(element)) {
+                this._wasDecorated = true;
+
+                // Call specific component decorate logic.
+                this.decorateInternal(element);
+                this._enterDocument();
+            } else {
+                return false;
+            }
+        },
+        canDecorate: function(el) {
+            return !!el;
+        },
+        wasDecorated: function() {
+            return this._wasDecorated;
+        },
+        decorateInternal: function(element) {
+            this.setElement(element);
+        },
+        _enterDocument: function() {
+            var wasIn = this._inDocument;
+            this._inDocument = true;
+            this.forEachChild(function(child) {
+                if (!child.isInDocument() && child.getElement()) {
+                    child._enterDocument();
+                }
+            });
+            this.delegateEvents();
+            if (!wasIn) {
+                if (this.enterDocument)
+                    this.enterDocument();
+                this.trigger('enterDocument', this);
+            }
+        },
+        delegateEvents: function(events) {
+            if (this._inDocument)
+                orig.delegateEvents.call(this, events);
+        },
+        _exitDocument: function() {
+            var wasIn = this._inDocument;
+            this.forEachChild(function(child) {
+                if (child.isInDocument()) {
+                    child._exitDocument();
+                }
+            });
+            this.undelegateEvents();
+            this._inDocument = false;
+            if (wasIn) {
+                if (this.exitDocument)
+                    this.exitDocument();
+                this.trigger('exitDocument', this);
+            }
+        },
+        dispose: function() {
+            if (!this._disposed) {
+                this._disposed = true;
+                if (this.disposeInternal)
+                    this.disposeInternal();
+                this._disposeInternal();
+            }
+        },
+        _disposeInternal: function() {
+            if (this._inDocument) {
+                this._exitDocument();
+            }
+
+            this.forEachChild(function(child) {
+                child.dispose();
+            });
+
+            this.stopListening && this.stopListening();
+
+            // Detach the component's element from the DOM, unless it was decorated.
+            if (!this._wasDecorated && this.el) {
+                this.$el.remove();
+            }
+
+            this._children = null;
+            this._childIndex = null;
+            this.el = null;
+            this.$el = null;
+            this._parent = null;
+        },
+        addChild: function(child, opt_render) {
+            this.addChildAt(child, this.getChildCount(), opt_render);
+        },
+        addChildAt: function(child, index, opt_render) {
+            if (child._inDocument && (opt_render || !this._inDocument) || child == this) {
+                return false;
+            }
+
+            if (index < 0) {
+                index = this.getChildCount() - index;
+            }
+
+            index = Math.min(Math.max(0, (_.isNumber(index) ? index : this.getChildCount())), this.getChildCount());
+
+            this._setupChildStorage();
+
+            // Moving child within component, remove old reference.
+            if (child.getParent() == this) {
+                this._childIndex[child.getId()] = child;
+                this._children = _.without(this._children, child);
+
+                // Add the child to this component.  goog.object.add() throws an error if
+                // a child with the same ID already exists.
+            } else {
+                // if (this._childIndex[child.cid])
+                // return false;
+                this._childIndex[child.cid] = child;
+            }
+
+            // Set the parent of the child to this component.
+            child.setParent(this);
+            this._children.splice(index, 0, child);
+
+            if (opt_render && (!child._inDocument || !this._inDocument)) {
+                this.createDom();
+                child.render();
+            }
+
+            if (child._inDocument && this._inDocument && child.getParent() == this) {
+                var contentElement = this.getContentElement();
+                if (!this.placeChild)
+                    contentElement.insertBefore(child.getElement(),
+                        (contentElement.childNodes[index] || null));
+                else
+                    _.each(this.children_, function(child, index) {
+                        this.placeChild(contentElement, child, index);
+                    }, this);
+
+
+
+            } else if (!opt_render && this._inDocument && !child._inDocument &&
+                child.el && child.el.parentNode) {
+                child.enterDocument();
+            }
+        },
+        getContentElement: function() {
+            if (this.contentElement && !this.$(this.contentElement)[0]) {
+                throw new Error('DANGER!');
+            }
+            return this.$(this.contentElement)[0] || this.el;
+        },
+        hasChildren: function() {
+            this._setupChildStorage();
+            return this._children.length !== 0;
+        },
+        getChildCount: function() {
+            this._setupChildStorage();
+            return this._children.length;
+        },
+        getChildIds: function() {
+            this._setupChildStorage();
+            return _.map(this._children, function(child) {
+                return child.cid;
+            });
+        },
+        getChildrenBySelector: function(selector) {
+            this._setupChildStorage();
+            if (!selector) {
+                return _.filter(this._children, function(child) {
+                    return !this.getSelectorForChild(child);
+                }, this);
+            }
+            return (this._views[selector] || []).slice();
+        },
+        getAllChildren: function() {
+            return (this._children || []).slice();
+        },
+        getChildren: function(selector) {
+            return this.getChildrenBySelector(selector);
+        },
+        getSelectorForChild: function(child) {
+            var selector;
+            _.each(this._views, function(arr, key) {
+                if (_.contains(arr, child))
+                    selector = key;
+            });
+            return selector;
+        },
+        getChild: function(id) {
+            this._setupChildStorage();
+            return this._childIndex[id] || null;
+        },
+        getChildAt: function(index) {
+            this._setupChildStorage();
+            return this._children[index] || null;
+        },
+        forEachChild: function(f, opt_obj) {
+            this._setupChildStorage();
+            _.each(this._children, f, opt_obj);
+        },
+        indexOfChild: function(child) {
+            this._setupChildStorage();
+            return _.indexOf(this._children, child);
+        },
+        removeChild: function(child, opt_unrender) {
+            this._setupChildStorage();
+            if (child) {
+                this._setupChildStorage();
+                // Normalize child to be the object and id to be the ID string.  This also
+                // ensures that the child is really ours.
+                var id = _.isString(child) ? child : child.getId();
+                child = this.getChild(id);
+
+                if (id && child) {
+                    var sel = this.getSelectorForChild(child);
+                    if (sel) {
+                        var i = _.indexOf(this._views[sel], child);
+                        if (i > -1)
+                            this._views[sel].splice(i, 1);
+                    }
+                    delete this._childIndex[id];
+                    this._children = _.without(this._children, child);
+
+                    if (opt_unrender) {
+                        // Remove the child component's DOM from the document.  We have to call
+                        // exitDocument first (see documentation).
+                        child._exitDocument();
+                        if (child.el) {
+                            child.$el.remove();
+                        }
+                    }
+
+                    // Child's parent must be set to null after exitDocument is called
+                    // so that the child can unlisten to its parent if required.
+                    child.setParent(null);
+                }
+            }
+
+            if (!child) {
+                return null;
+            }
+
+            return child;
+        },
+        removeChildAt: function(index, opt_unrender) {
+            return this.removeChild(this.getChildAt(index), opt_unrender);
+        },
+        removeChildren: function(opt_unrender) {
+            var removedChildren = [];
+            while (this.hasChildren()) {
+                removedChildren.push(this.removeChildAt(0, opt_unrender));
+            }
+            return removedChildren;
+        },
+        setView: function(selector, child) {
+            this._setupChildStorage();
+            if (!child) {
+                child = selector;
+                selector = undefined;
+            }
+            _.each(this.getChildren(selector), function(child) {
+                this.removeChild(child, true);
+            }, this);
+            this.createDom();
+            this.$(selector || this.getContentElement()).empty();
+            return this.insertView(selector, child);
+        },
+        insertView: function(selector, child) {
+            this._setupChildStorage();
+            this.createDom();
+            if (!child) {
+                child = selector;
+                selector = this.getContentElement();
+            }
+            this.removeChild(child);
+            if (_.isString(selector)) {
+                this._views = this._views || {};
+                this._views[selector] = this._views[selector] || [];
+                if (!_.contains(this._views[selector], child)) {
+                    this._views[selector].push(child);
+                }
+            }
+            this.addChild(child);
+            child.render(this.$(selector)[0]);
+            return child;
+        },
+        setViews: function(views) {
+            _.each(views, function(val, key) {
+                if (!_.isArray(val))
+                    val = [val];
+                _.each(val, function(child) {
+                    this.insertView(key, child);
+                }, this);
+            }, this);
+        },
+        getView: function(selector) {
+            return this.getChildrenBySelector(selector)[0];
+        },
+        getViews: function(selector) {
+            return this.getChildrenBySelector(selector);
+        }
+    });
+})();
+// v1.0.0
+
+// ==========================================
+// Copyright 2013 Dataminr
+// Licensed under The MIT License
+// http://opensource.org/licenses/MIT
+// ==========================================
+
+
+var Board = (function() {
+
+	/**
+	 * creates a logical board for blocks
+	 * @constructor
+	 * @param  {number} columns
+	 * @param  {number} rows
+	 */
+	var Board = function(columns, rows) {
+		this.cols = columns;
+		this.rows = rows;
+		this._generate();
+	};
+
+	/**
+	 * returns a clones board with cloned blocks
+	 * @return {Board}
+	 */
+	Board.prototype.clone = function() {
+		var board = new Board(this.cols, this.rows);
+		var blocks = this.getBlocks();
+		var cloneBlocks = _.map(blocks, function(block) {
+			return block.clone();
+		});
+		for (var i = 0; i < this._board.length; i++)
+			board._board[i] = cloneBlocks[blocks.indexOf(this._board[i])];
+		return board;
+	};
+
+	/**
+	 * creates the the internal array for the board
+	 * @private
+	 */
+	Board.prototype._generate = function() {
+		// create board
+		this._board = [];
+		// create panels
+		for (var i = 0; i < this.cols * this.rows; i++) {
+			this._board.push(undefined);
+		}
+	};
+
+	/**
+	 * resets the board and places in the blocks
+	 */
+	Board.prototype.regenerate = function() {
+		var blocks = this.getBlocks();
+		this._board = _.map(this._board, function(){});
+		for (var i = 0; i < blocks.length; i++)
+			blocks[i].eachSpace(function(x, y) {
+				this.setBlockAt(x, y, blocks[i]);
+			}, this);
+	};
+
+	/**
+	 * returns the blocks on the board
+	 * @return {Array.<Block>}
+	 */
+	Board.prototype.getBlocks = function() {
+		return _.uniq(_.filter(this._board, _.identity));
+	};
+
+	/**
+	 * returns the block at a position in the board
+	 * @param  {number} x
+	 * @param  {number} y
+	 * @return {Block=}
+	 */
+	Board.prototype.getBlockAt = function(x, y) {
+		return this._board[y * this.cols + x];
+	};
+
+	/**
+	 * Set a block at a position on the board, mostly internal see addBlock
+	 * @param  {number} x
+	 * @param  {number} y
+	 * @param  {Block} block
+	 * @return {Block}
+	 */
+	Board.prototype.setBlockAt = function(x, y, block) {
+		return this._board[y * this.cols + x] = block;
+	};
+
+	/**
+	 * adds a block to the board returning any blocks that can't be resized to
+	 * accomodate it
+	 * @param  {Block} block
+	 * @return {Array.<Block>}
+	 */
+	Board.prototype.addBlock = function(block) {
+		var x = block.x;
+		var y = block.y;
+		if (_.contains(this.getBlocks(), block)) {
+			this.removeBlock(block);
+			block.x = x;
+			block.y = y;
+		}
+		var leftOvers = [];
+		var blocks = this.getBlocks();
+		for (var i = 0; i < blocks.length; i++) {
+			if (blocks[i].shrinkFrom(block) === false)
+				leftOvers.push(blocks[i]);
+		}
+		block.eachSpace(function(x, y) {
+			this.setBlockAt(x, y, block);
+		}, this);
+		this.regenerate();
+		return _.uniq(leftOvers);
+	};
+
+	/**
+	 * remove a block from the board
+	 * @param  {Block} block
+	 */
+	Board.prototype.removeBlock = function(block) {
+		block.eachSpace(function(x, y) {
+			this.setBlockAt(x, y);
+		}, this);
+	};
+
+	/**
+	 * check to see if a block can fit in the board
+	 * @param  {Block} block
+	 * @param  {number} x
+	 * @param  {number} y
+	 * @return {boolean}
+	 */
+	Board.prototype.canFit = function(block, x, y) {
+		block = block.clone();
+		block.setPosition(x, y);
+		return x + block.width <= this.cols &&
+			y + block.height <= this.rows &&
+			_.all(this.getBlocks(), function(child) {
+				return !block.overlaps(child);
+			});
+	};
+
+	/**
+	 * move a block in the board, this will move any blocks that can't
+	 * accomodate the move in the space left behind
+	 * @param  {Block} block
+	 * @param  {number} x
+	 * @param  {number} y
+	 */
+	Board.prototype.moveBlock = function(block, x, y) {
+		var space = block.clone();
+		space.value = -1;
+		this.removeBlock(block);
+		block.setPosition(x, y);
+		var blocks = this.addBlock(block);
+		this.placeBlocksInBlock(space, blocks);
+	};
+
+	/**
+	 * Place a block on the board with the given coords and size
+	 * @param  {Block} block
+	 * @param  {number} x
+	 * @param  {number} y
+	 * @param  {number} width
+	 * @param  {number} height
+	 * @return {Array.<Block>} Blocks pushed off board
+	 */
+	Board.prototype.placeBlock = function(block, x, y, width, height) {
+		this.removeBlock(block);
+		block.x = x;
+		block.y = y;
+		block.width = width;
+		block.height = height;
+		return this.addBlock(block);
+	};
+
+    Board.prototype.canReplaceBlock = function(block, x, y, width, height) {
+    	this.removeBlock(block);
+    	var b2 = block.clone();
+    	var board = this.clone();
+        var ret = board.placeBlock(b2, width, height, x, y);
+        this.addBlock(block);
+        return !ret.length;
+    };
+
+    Board.prototype.replaceBlock = function(block, x, y, width, height) {
+    	return this.placeBlock(block, width, height, x, y);
+    };
+
+	/**
+	 * recursive function to try and place a set of blocks inside a board area
+	 * @param  {Block} block uses the position and size to represent an area
+	 * on the board
+	 * @param  {Array.<Block>} blocks to place
+	 * @param  {number|undefined} level used internally, don't pass in
+	 * @return {boolean}
+	 */
+	Board.prototype.placeBlocksInBlock = function(block, blocks, level) {
+		level = level || 0;
+		if (level == blocks.length)
+			return true;
+		var nextBlock = blocks[level];
+		for (var y = block.y; y < block.y + block.height; y++) {
+			for (var x = block.x; x < block.x + block.width; x++) {
+				if (this.canFit(blocks[level], x, y)) {
+					blocks[level].setPosition(x, y);
+					this.addBlock(blocks[level]);
+					if (this.placeBlocksInBlock(block, blocks, level + 1))
+						return true;
+				}
+			}
+		}
+		return false;
+	};
+
+	/**
+	 * resize & reposition a block on the board
+	 * @param  {Block} block
+	 * @param  {number} width
+	 * @param  {number} height
+	 * @param  {number} x
+	 * @param  {number} y
+	 * @return {Array.<Block>}
+	 */
+	Board.prototype.resizeBlock = function(block, width, height, x, y) {
+		if (x == null)
+			x = block.x;
+		if (y == null)
+			y = block.y;
+		this.removeBlock(block);
+		block.setPosition(x, y);
+		block.width = width;
+		block.height = height;
+		return this.addBlock(block);
+	};
+
+	/**
+	 * can a block be resized without removing any other blocks
+	 * @param  {Block} block
+	 * @param  {number} width
+	 * @param  {number} height
+	 * @param  {number} x
+	 * @param  {number} y
+	 * @return {boolean}
+	 */
+	Board.prototype.canResizeBlock = function(block, width, height, x, y) {
+		var clone = this.clone();
+		var blockClone = clone.getBlockAt(block.x, block.y);
+		return !clone.resizeBlock(blockClone, width, height, x, y).length;
+	};
+
+	/**
+	 * print out the board to the console
+	 */
+	Board.prototype.print = function() {
+		console.log('---Board Start---');
+		var vals = _.map(this._board, function(boardSpace) {
+			return boardSpace ? boardSpace.value : -1;
+		});
+		for (var y = 0; y < this.rows; y++) {
+			console.log(vals.slice(y*this.cols, y*this.cols + this.cols).join(','));
+		}
+		console.log('---Board End---');
+	}
+
+	/**
+	 * A block that can be placed on the board
+	 * @constructor
+	 * @param  {number} x
+	 * @param  {number} y
+	 * @param  {number} width
+	 * @param  {number} height
+	 * @param  {Object=} value
+	 * @param  {number=} minWidth
+	 * @param  {number=} minHeight
+	 */
+	var Block = function(x, y, width, height, value, minWidth, minHeight) {
+		this.x = x;
+		this.y = y;
+		this.width = width;
+		this.height = height;
+		this.value = value;
+		this.minWidth = minWidth || 1;
+		this.minHeight = minHeight || 1;
+	};
+
+	/**
+	 * set the position
+	 * @param  {number} x
+	 * @param  {number} y
+	 */
+	Block.prototype.setPosition = function(x, y) {
+		this.x = x;
+		this.y = y;
+	};
+
+	/**
+	 * set the value
+	 * @param {Object=} value
+	 */
+	Block.prototype.setValue = function(value) {
+		this.value = value;
+	};
+
+	/**
+	 * get the value
+	 * @return {Object=}
+	 */
+	Block.prototype.getValue = function() {
+		return this.value;
+	};
+
+	/**
+	 * create a clone of the block with the same value
+	 * @return {Block}
+	 */
+	Block.prototype.clone = function() {
+		return new Block(this.x, this.y, this.width, this.height, this.getValue(), this.minWidth, this.minHeight);
+	};
+
+	/**
+	 * run a function with context on each space in the block
+	 * @param  {Function} fn
+	 * @param  {Object=} ctx
+	 */
+	Block.prototype.eachSpace = function(fn, ctx) {
+		for (var x = this.x; x < this.x + this.width; x++) {
+			for(var y = this.y; y < this.y + this.height; y++) {
+				fn.call(ctx, x, y);
+			}
+		}
+	};
+
+	/**
+	 * shrink to allow the given block room
+	 * @param {Block} block
+	 * @return {boolean=}
+	 */
+	Block.prototype.shrinkFrom = function(block) {
+		if (!this.overlaps(block))
+			return;
+
+		var _this = this;
+
+		var choice = {
+			'0': function() {
+				return false;
+			}
+		};
+		var choices = [0];
+
+		if (this.x + this.width > block.x + block.width) {
+			var width = this.width - (block.x + block.width - this.x);
+			if (width >= this.minWidth) {
+				choice[Math.abs(width * this.height)] = function() {
+					_this.width = width;
+					_this.x = block.x + block.width;
+					return true;
+				};
+				choices.push(width * this.height);
+			}
+		}
+
+		if (this.y + this.height > block.y + block.height) {
+			var height = this.height - (block.y + block.height - this.y);
+			if (height >= this.minHeight) {
+				choice[Math.abs(this.width * height)] = function() {
+					_this.height = height;
+					_this.y = block.y + block.height;
+					return true;
+				};
+				choices.push(this.width * height);
+			}
+		}
+
+		if (this.x < block.x) {
+			if (block.x - this.x >= this.minWidth) {
+				choice[Math.abs((block.x - this.x) * this.height)] = function() {
+					_this.width = block.x - _this.x;
+					return true;
+				}
+				choices.push((block.x - this.x) * this.height);
+			}
+		}
+
+		if (this.y < block.y) {
+			if (block.y - this.y >= this.minWidth) {
+				choice[Math.abs((block.y - this.y) * this.width)] = function() {
+					_this.height = block.y - _this.y;
+					return true;
+				}
+				choices.push((block.y - this.y) * this.width);
+			}
+		}
+
+		return choice[Math.max.apply(null, choices)]();
+	};
+
+	/**
+	 * if blocks overlap
+	 * @param  {Block} block
+	 * @return {boolean}
+	 */
+	Block.prototype.overlaps = function(block) {
+		return this.x < block.x + block.width &&
+			this.x + this.width > block.x &&
+			this.y < block.y + block.height &&
+			this.y + this.height > block.y;
+	};
+
+	return {
+		Board: Board,
+		Block: Block
+	};
+})();
+
+// v1.0.0
+
+// ==========================================
+// Copyright 2013 Dataminr
+// Licensed under The MIT License
+// http://opensource.org/licenses/MIT
+// ==========================================
+
+var WidgetBoard = (function(Board) {
+
+	var WidgetBoard = {
+		WidgetBoard: {
+			mixin: {},
+		},
+		Widget: {
+			mixin: {},
+		},
+	}
+
+	var Block = Board.Block;
+	var Board = Board.Board;
+
+	/**
+	 * used as a placeholder for a
+	 */
+	var widgetPlaceholder = {
+		extend: {
+			className:'widget widget-placeholder-container',
+			template: '<div class="widget-placeholder"></div>',
+			setPos: function(position) {
+				if (!this.el)
+					return;
+	        	if (_.isEqual(this.positionSave, position))
+	        		return;
+	        	this.positionSave = position;
+	            this.$el.css(position);
+	            this.trigger('positionSet');
+	        }
+   		}
+   	};
+
+	var WidgetContainerTemplate = ''+
+		'<div class="widget-inner"></div>' +
+		'<div class="resize resize-tl"></div>' +
+		'<div class="resize resize-tr"></div>' +
+		'<div class="resize resize-br"></div>';
+
+	var Widget = Factory.register('Widget', {
+		base: Backbone.ComponentView,
+		extend: {
+			setValue: function(value) {
+				this.setView(value);
+			}
+		}
+	});
+
+	var scroll = function() {
+		if (!this.dontScroll) {
+			if (this.getParent().moving)
+				return;
+			if (e.clientX < 10) {
+				this.getParent().moveLeft(_.bind(function() {
+					this.resetDragPos();
+				}, this));
+				return;
+			}
+			if (this.screenWidth - e.clientX - 10 < 0) {
+				this.getParent().moveRight(_.bind(function() {
+					this.resetDragPos();
+				}, this));
+				return;
+			}
+		}
+	};
+
+	WidgetBoard.Widget.mixin.movable = function(options) {
+
+		var offsets = _.extend({
+			'moveX': 0,
+			'moveY': 0,
+			'top': 0.5,
+			'bottom': 0.5,
+			'left': 0.5,
+			'right': 0.5
+		}, options.blockOffsets);
+
+		var setters = _.extend({
+			'top': function(y) {
+				var block = this.getBlock();
+				var bottom = block.y + block.height;
+				return [Math.min(y, bottom - 1), bottom];
+			},
+			'bottom': function(y) {
+				var top = this.getBlock().y;
+				return [top, Math.max(y, top + 1)];
+			},
+			'left': function(x) {
+				var block = this.getBlock();
+				var right = block.x + block.width;
+				return [Math.min(x, right - 1), right];
+			},
+			'right': function(x) {
+				var left = this.getBlock().x;
+				return [left, Math.max(x, left + 1)];
+			},
+			'moveX': function(x) {
+				var width = this.getBlock().width;
+				var parentWidth = this.getParent().WIDTH;
+				x = Math.min(parentWidth - width, x);
+				return [x, x + width];
+			},
+			'moveY': function(y) {
+				var height = this.getBlock().height;
+				var parentHeight = this.getParent().HEIGHT;
+				y = Math.min(parentHeight - height, y);
+				return [y, y + height];
+			}
+		}, options.blockSetters);
+
+		this.after({
+			initialize: function() {
+				this.offsets = _.clone(offsets);
+			}
+		});
+
+		this.setDefaults({
+			getBlock: function() {
+				return this.getParent().getBlockByWidget(this);
+			},
+			/**
+			 * get the corner from an element
+			 * @param  {Element} el
+			 * @return {{H:string, V:string}=}
+			 */
+			getCornersFromElement: function(el) {
+				var $el = $(el);
+				if ($el.hasClass('move'))
+					return {
+						H: 'moveX',
+						V: 'moveY'
+					};
+				var match = el.className.match(/resize-([^-]+)-([^-]+)/);
+				if (!match)
+					return;
+				return {
+					V: match[1],
+					H: match[2]
+				};
+			},
+			/**
+			 * get the box in the board for a mouse position
+			 * @param  {number} leftOffset offset number of boxes
+			 * @param  {number} topOffset offset number of boxes
+			 * @param  {number} boxWidth pixel width of a box
+			 * @param  {number} boxHeight pixel height of a box
+			 * @param  {number} x mouse position in the board
+			 * @param  {number} y mouse position in the board
+			 * @return {[number, number]} position of the box
+			 */
+			resolveToSquare: function(leftOffset, topOffset, boxWidth, boxHeight, x, y) {
+				return [
+					Math.floor((x + (boxWidth * leftOffset)) / boxWidth),
+					Math.floor((y + (boxHeight * topOffset)) / boxHeight)
+				];
+			},
+			/**
+			 * setup variables needed for mouse movement
+			 */
+			startDrag: function(corners) {
+				var parent = this.getParent();
+				var parentOffset = parent.$el.offset();
+				this.topOffset = parentOffset.top;
+				this.leftOffset = parentOffset.left;
+				this.block = this.getBlock();
+				this.boxWidth = parent.$el.width() / parent.WIDTH;
+				this.boxHeight = parent.$el.height() / parent.HEIGHT;
+				this.lastBlock = [
+					this.block.y,
+					this.block.x + this.block.width,
+					this.block.y + this.block.height,
+					this.block.y
+				];
+			},
+			/**
+			 * returns the box for mouse coordinates given the type of resize
+			 * @param  {{V:string,H:string}} corner
+			 * @param  {{clientX:number, clientY:number}} coords
+			 * @return {[number, number]}
+			 */
+			getSquare: function(corner, coords) {
+				var parent = this.getParent();
+				var xy = this.resolveToSquare(
+					this.offsets[corner.H],
+					this.offsets[corner.V],
+					this.boxWidth,
+					this.boxHeight,
+					coords.clientX,
+					coords.clientY
+				);
+				return [
+					Math.min(Math.max(0, xy[0]), parent.WIDTH),
+					Math.min(Math.max(0, xy[1]), parent.HEIGHT)
+				];
+			},
+			/**
+			 * Run on every mouse move
+			 * @param  {function(number, number, number, number)} process
+			 * @param  {{H:string, V:string}} corner
+			 * @param  {{clientX:number, clientY:number}} coords
+			 */
+			onMouseMove: function(process, corner, coords) {
+				var square = this.getSquare(corner, coords);
+				var horizontal = setters[corner.H].call(this, square[0]);
+				var vertical = setters[corner.V].call(this, square[1]);
+				var temp = [
+					vertical[0],
+					horizontal[1],
+					vertical[1],
+					horizontal[0]
+				];
+				if (_.isEqual(this.lastBlock, temp))
+					return;
+				this.lastBlock = temp;
+				process.apply(this, this.lastBlock);
+			},
+			/**
+			 * get the mover based on coords
+			 * @param  {{H:string, V:string}} coords
+			 * @return {function(number,number,number,number)}
+			 */
+			getMover: function(coords) {
+				var parent = this.getParent();
+				if (coords.H == 'moveX') {
+					return function(top, right, bottom, left) {
+						parent.moveWidget(this,
+							top,
+							left);
+					}
+				} else {
+					return function(top, right, bottom, left) {
+						parent.resizeWidget(this,
+							top,
+							right,
+							bottom,
+							left);
+					}
+				}
+			},
+			/**
+			 *
+			 */
+			updateOffset: function(corners, e) {
+				if (corners.H != 'moveX')
+					return;
+				this.offsets['moveX'] = -Math.floor((e.clientX - this.$el.position().left) / this.boxWidth);
+			},
+			/**
+			 * start moving
+			 * @param {MouseEvent} e
+			 */
+			onMove: function(e) {
+				var parent = this.getParent();
+				var corners = this.getCornersFromElement(e.target);
+				if (!corners)
+					return;
+				this.startDrag(corners);
+				parent.startEdit();
+				this.updateOffset(corners, e);
+				if (this.mover) {
+					this.mover.stop();
+					$(window).off('mouseup.' + this.mover.id);
+				}
+				var moveFn = this.getMover(corners);
+				this.mover = new MouseMover(_.bind(function(coords) {
+					this.onMouseMove(moveFn,
+						corners,
+						coords);
+				}, this));
+				this.mover.start();
+				var that = this;
+				$(window).on('mouseup.' + this.mover.id, function(e) {
+					parent.stopEdit();
+					that.mover.stop();
+					$(window).off('mouseup.' + that.mover.id);
+					that.mover = null;
+					that.endMove();
+				});
+				e.preventDefault();
+			},
+			endMove: function() {}
+		});
+
+		this.addToObj({
+			events: {
+				'mousedown .resize': 'onMove',
+				'mousedown .move': 'onMove'
+			}
+		});
+	};
+
+	WidgetBoard.WidgetBoard.mixin.asdf = function(options) {
+		this.mixin([
+			WidgetBoard.WidgetBoard.mixin.movable
+		], options);
+
+		this.after({
+			startEdit: function() {
+				this.orig = this.board;
+				this.board = this.board.clone();
+			}
+		});
+
+		var cloneOrig = function() {
+			this.board = this.orig.clone();
+		};
+
+		this.before({
+			moveWidget: cloneOrig,
+			resizeWidget: cloneOrig
+		});
+
+	};
+
+	WidgetBoard.WidgetBoard.mixin.pageable = function(options) {
+
+		this.setDefaults({
+			getColumnWidth: function() {
+				return this.$el.width() / this.WIDTH;
+			}
+		})
+
+	};
+
+	WidgetBoard.WidgetBoard.mixin.movable = function(options) {
+
+		this.setDefaults({
+			startEdit: function() {},
+			stopEdit: function() {},
+			/**
+			 * resize a block if possible
+			 * @param  {number} top
+			 * @param  {number} right
+			 * @param  {number} bottom
+			 * @param  {number} left
+			 * @return {number}
+			 */
+			resizeWidget: function(widget, top, right, bottom, left) {
+				var block = this.getBlockByWidget(widget);
+				if (!this.board.canReplaceBlock(
+						block,
+						right - left,
+						bottom - top,
+						left,
+						top
+						))
+					return false;
+				this.board.replaceBlock(
+					block,
+					right - left,
+					bottom - top,
+					left,
+					top
+					);
+				this.placeViews();
+				return true;
+			},
+			/**
+			 * move the block in it's parent
+			 * @param  {number} top
+			 * @param  {number} left
+			 * @return {boolean}
+			 */
+			moveWidget: function(widget, top, left) {
+				var block = this.getBlockByWidget(widget);
+				var temp = block.clone();
+				this.board.placeBlocksInBlock(temp, this.board.replaceBlock(
+					block,
+					block.width,
+					block.height,
+					left,
+					top
+				));
+				this.placeViews();
+				return true;
+			},
+		});
+
+	};
+
+
+	Factory.register('WidgetPlaceholder', {
+		base: 'Widget',
+		className: 'widget-placeholder',
+		setPosition: function(position) {
+        	if (_.isEqual(this.positionSave, position))
+        		return;
+        	this.positionSave = position;
+            this.$el.css(position);
+            this.trigger('positionSet');
+        }
+	});
+
+	WidgetBoard.Widget.mixin.fancyMove = function() {
+
+		this.mixin(WidgetBoard.Widget.mixin.movable);
+
+		this.setDefaults({
+			placeholder: Factory.get('WidgetPlaceholder')
+		});
+
+		this.after({
+			startDrag: function(corners) {
+				if (corners.H != 'moveX')
+					return;
+				this.placeHolder_ = new this.placeholder();
+				this.placeHolder_.createDom();
+				this.block.value = this.placeHolder_;
+				this.getParent().placeViews();
+				this.placeHolder_.render(this.el.parentElement);
+				this.moving_ = true;
+				this.$el.addClass('moving');
+			},
+			onMove: function(e) {
+				if (!this.moving_)
+					return;
+				this.pointX = e.clientX - this.$el.position().left;
+				this.lastX = e.clientX;
+			},
+			onMouseMove: function(process, corners, coords) {
+				if (corners.H != 'moveX')
+					return;
+				this.setPosition({
+					top: coords.clientY,
+					left: coords.clientX - this.pointX
+				});
+			},
+			endMove: function() {
+				this.moving_ = false;
+				this.getBlock().value = this;
+				this.$el.removeClass('moving');
+				if (!this.placeHolder_)
+					return;
+				this.placeHolder_.dispose();
+				this.placeHolder_ = null;
+				this.getParent().placeViews();
+			}
+		});
+		this.around({
+			getBlock: function(orig) {
+				if (this.placeHolder_)
+					return this.getParent().getBlockByWidget(this.placeHolder_);
+				return orig();
+			},
+			getMover: function(orig, coords) {
+				var parent = this.getParent();
+				if (coords.H == 'moveX') {
+					return function(top, right, bottom, left) {
+						parent.moveWidget(this.placeHolder_,
+							top,
+							left);
+					}
+				}
+				return orig(coords);
+			}
+		});
+	};
+
+	var WidgetContainer = Factory.register('WidgetContainer', {
+		base: 'Widget',
+		extend: {
+			className: 'widget',
+			template: WidgetContainerTemplate,
+			contentElement: '.widget-inner',
+	        setPosition: function(position) {
+	        	if (_.isEqual(this.positionSave || {}, position))
+	        		return;
+	        	this.positionSave = position;
+	            this.$el.css(position);
+	            this.trigger('positionSet');
+	        },
+			remove: function() {
+				this.getParent().removeWidget(this);
+			}
+		}
+	});
+
+	Factory.register('MovableWidget', {
+		base: 'WidgetContainer',
+		contentElement: '.content',
+		template: '<div class="move">header</div><div class="content"></div><div class="resize resize-bottom-right"></div><div class="resize resize-top-left"></div><div class="resize resize-bottom-left"></div><div class="resize resize-top-right"></div>',
+		mixins: [
+			WidgetBoard.Widget.mixin.movable
+		]
+	});
+
+	/**
+	 * Base class for a widget board
+	 */
+	Factory.register('WidgetBoard', {
+		base: Backbone.ComponentView,
+		extend: {
+			WIDTH: 9,
+			HEIGHT: 9,
+			SCREENCOLS: 9,
+			MAXCOLS: Infinity,
+			className: 'widgetboard',
+			template: '',
+			widget: Factory.get('WidgetContainer'),
+			/**
+			 * @inheritDoc
+			 */
+			initialize: function() {
+				this.board = new Board(this.WIDTH, this.HEIGHT);
+				this.setStyles();
+			},
+			/**
+			 * @inheritDoc
+			 */
+			enterDocument: function() {
+				this.placeViews();
+			},
+			/**
+			 * create a new block and put value in a widget
+			 * @param {Object} value
+			 * @param {number} x
+			 * @param {number} y
+			 * @param {number} width
+			 * @param {number} height
+			 * @param {function(new: Widget){}=} widget
+			 * @return {Widget|undefined}
+			 */
+			addWidget: function(value, x, y, width, height, widget) {
+				var widget = new (widget || this.widget)();
+				// TODO: rethink how this should be passed
+				widget.setValue(value);
+				var block = new Block(x, y, width, height, widget);
+				var clone = this.board.clone();
+				if (clone.addBlock(block).length)
+					return;
+				this.board.addBlock(block);
+				this.addChild(widget, this.isInDocument());
+				this.placeViews();
+				return widget;
+			},
+			/**
+			 * Sets the sie for the board
+			 * @param {number} columns
+			 * @param {number} rows
+			 */
+			setSize: function(columns, rows) {
+				this.WIDTH = columns;
+				this.HEIGHT = rows;
+				this.setStyles();
+				this.trigger('change:size', cols, rows);
+			},
+			/**
+			 * sets the style to display the corrext number of columns
+			 */
+			setStyles: function() {
+				if (!this.styleEl) {
+					this.styleEl = document.createElement('style');
+					document.body.appendChild(this.styleEl);
+				}
+				if (this.SCREENCOLS == 1) {
+					this.styleEl.innerHTML = '.widgetboard{width:100%}';
+					return;
+				}
+				// this.styleEl.innerHTML = '@media(max-width:500px){' +
+				// 	'.widgetboard{width:' + (this.WIDTH * 100) + '%;}}\n' +
+				// 	'@media(min-width:500px){' +
+				// 	'.widgetboard{width:' + (this.WIDTH * 50) + '%;}}\n' +
+				// 	'@media(min-width:750px){' +
+				// 	'.widgetboard{width:' + (this.WIDTH / 3 * 100) + '%;}}\n' +
+				// 	'@media(min-width:1000px){' +
+				// 	'.widgetboard{width:' + (this.WIDTH * 25) + '%;}}' ;
+			},
+			/**
+			 * tells each widget where is should be placed on the screen
+			 */
+			placeViews: function() {
+				if (!this.isInDocument())
+					return;
+				var row = 100 / this.HEIGHT;
+				var column = 100 / this.WIDTH;
+				_.each(this.board.getBlocks(), function(block) {
+					// block.value.render();
+	                block.value.setPosition({
+	                    top: (block.y * row) + '%',
+	                    left: (block.x * column) + '%',
+	                    width: (block.width * column) + '%',
+	                    height: (block.height * row) + '%'
+	                });
+				}, this);
+			},
+			/**
+			 * return the block by it's widget value
+			 * @param {Backbone.ComponentView}
+			 * @return {Block}
+			 */
+			getBlockByWidget: function(view) {
+				return _.find(this.board.getBlocks(), function(board) {
+					return board.value == view;
+				});
+			},
+			/**
+			 * remove a widget and unrender it
+			 * @param {Backbone.ComponentView} w
+			 */
+			removeWidget: function(w) {
+				this.removeChild(w, true);
+				this.board.removeBlock(this.getBlockByWidget(w));
+			},
+			/**
+			 * get all the widgets added to the widgetboard
+			 * @return {Array.<Backbone.ComponentView>}
+			 */
+			getWidgets: function() {
+				function getVal(block) {
+					return block.value;
+				};
+				return _.map(this.board.getBlocks, getVal);
+			}
+		}
+	});
+
+	WidgetBoard.WidgetBoard.mixin.AddColumn = function() {
+		this.setDefaults({
+			/**
+			 * insert a column in to the board at a given index
+			 * @param {number} index
+			 * @return {boolean}
+			 */
+			addColumn: function(index) {
+				this.setSize(this.WIDTH + 1, this.HEIGHT);
+				this.board.cols = this.WIDTH;
+				for (var i = 0; i < this.HEIGHT; i ++) {
+					this.board._board.splice(i * this.WIDTH + index, 0, undefined);
+				};
+				_.each(this.board.getBlocks(), function(block) {
+					if (block.x >= index)
+						block.x += 1;
+					if (block.x < index && block.x + block.width > index) {
+						block.width += 1;
+						for (var i = 0; i < block.height; i++) {
+							this.board.setBlockAt(index, block.y + i, block);
+						}
+					}
+				}, this);
+				return true;
+			}
+		});
+	};
+
+	WidgetBoard.WidgetBoard.mixin.RemoveColumn = function() {
+		this.setDefaults({
+			/**
+			 * remove a column in the board at a given index
+			 * @param {number} index
+			 */
+			removeColumn: function(x) {
+				this.setSize(this.WIDTH - 1, this.HEIGHT);
+				this.board.cols = this.WIDTH;
+				for (var i = 0; i < this.HEIGHT; i ++) {
+					this.board._board.splice(i * this.WIDTH + x, 1);
+				};
+				_.each(this.board.getBlocks(), function(block) {
+					if (block.x > x)
+						block.x -= 1;
+					if (block.x < x && block.x + block.width > x)
+						block.width -= 1;
+				});
+			}
+		});
+	};
+
+	WidgetBoard.WidgetBoard.mixin.GetBlankColumns = function() {
+		this.setDefaults({
+			/**
+			 * get the indexes of blank columns
+			 * @return {Array.<number>}
+			 */
+			getBlankColumns: function() {
+				var cols = [];
+				var y = [];
+				for (var i = 0; i < this.HEIGHT; i++) {
+					y.push(i);
+				};
+				for (var x = 0; x < this.WIDTH; x++) {
+					if (_.all(y, function(y) {
+						return !this.board.getBlockAt(x, y);
+					}, this)) cols.push(x);
+				};
+				return cols;
+			}
+		});
+	};
+
+	WidgetBoard.WidgetBoard.mixin.RemoveBlanksColumns = function(options) {
+		this.mixin([
+			WidgetBoard.WidgetBoard.mixin.GetBlankColumns,
+			WidgetBoard.WidgetBoard.mixin.RemoveColumn
+		]);
+
+		this.setDefaults({
+			removeBlankColumns: function() {
+				var blank = this.getBlankColumns();
+				while (blank.length && this.WIDTH > this.SCREENCOLS) {
+					this.removeColumn(blank.shift());
+					blank = _.map(blank, function(a) {return a - 1;});
+				}
+			}
+		});
+	};
+
+	Factory.register('MovableBoard', {
+		base: 'WidgetBoard',
+		extend: {
+			widget: Factory.get('MovableWidget').extend().mixin(WidgetBoard.Widget.mixin.fancyMove)
+		},
+		mixins: [
+			WidgetBoard.WidgetBoard.mixin.asdf
+		]
+	});
+
+	return WidgetBoard;
+
+})(Board);
+
+var board = Factory.inst('MovableBoard');
+board.render('.body');
+
+board.addWidget(new Backbone.ComponentView({className: 'red'}), 0, 0, 3, 3);
+board.addWidget(new Backbone.ComponentView({className: 'green'}), 0, 3, 3, 3);
+board.addWidget(new Backbone.ComponentView({className: 'yellow'}), 0, 6, 3, 3);
+board.addWidget(new Backbone.ComponentView({className: 'purlple'}), 3, 0, 3, 3);
+board.addWidget(new Backbone.ComponentView({className: 'blue'}), 3, 3, 3, 3);
+board.addWidget(new Backbone.ComponentView({className: 'orange'}), 3, 6, 3, 3);
+board.addWidget(new Backbone.ComponentView({className: 'pink'}), 6, 0, 3, 3);
+board.addWidget(new Backbone.ComponentView({className: 'red'}), 6, 3, 3, 3);
+board.addWidget(new Backbone.ComponentView({className: 'blue'}), 6, 6, 3, 3);
+
+</script>
